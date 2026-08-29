@@ -28,6 +28,12 @@ public class Player implements Runnable {
         this.random = new Random();
         this.gameState = gameState;
 
+        // Register both decks so that if the game ends while this player
+        // (or whichever player shares one of these decks) is blocked inside
+        // drawCard(), that thread can be woken up instead of waiting forever.
+        gameState.registerDeck(leftDeck);
+        gameState.registerDeck(rightDeck);
+
         String filename = "player" + playerNumber + "_output.txt";
         this.outputWriter = new FileWriter(filename);
     }
@@ -146,6 +152,14 @@ public class Player implements Runnable {
             while (!gameState.isGameWon()) {
                 // Draw a card from left deck
                 Card drawnCard = leftDeck.drawCard();
+
+                if (drawnCard == null) {
+                    // The deck stayed empty because the game ended while
+                    // this player was blocked waiting for a card; nothing
+                    // was drawn, so there is nothing to log or add to the
+                    // hand. Exit the loop cleanly.
+                    break;
+                }
 
                 // Check if game ended while waiting
                 if (gameState.isGameWon()) {

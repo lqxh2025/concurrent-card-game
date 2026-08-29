@@ -1,5 +1,8 @@
 package com.qiuhan.cardgame;
 
+import java.util.LinkedHashSet;
+import java.util.Set;
+
 /**
  * Shared game state to coordinate multiple player threads.
  * Ensures only one player can win.
@@ -7,6 +10,19 @@ package com.qiuhan.cardgame;
 public class GameState {
     private volatile boolean gameWon = false;
     private volatile int winnerNumber = -1;
+    private final Set<CardDeck> registeredDecks = new LinkedHashSet<>();
+
+    /**
+     * Registers a deck so that, if the game ends while a thread is blocked
+     * inside that deck's drawCard(), it can be woken up instead of waiting
+     * forever for a card that will never arrive. Safe to call more than
+     * once with the same deck (e.g. because it is shared between two
+     * players as one player's left deck and another's right deck).
+     * @param deck the deck to register for game-over wakeups
+     */
+    public synchronized void registerDeck(CardDeck deck) {
+        registeredDecks.add(deck);
+    }
 
     /**
      * Attempts to declare this player as the winner.
@@ -17,6 +33,12 @@ public class GameState {
         if (!gameWon) {
             gameWon = true;
             winnerNumber = playerNumber;
+            // Wake any thread currently blocked waiting for a card in any
+            // registered deck, so it can observe that the game has ended
+            // and exit instead of waiting indefinitely.
+            for (CardDeck deck : registeredDecks) {
+                deck.signalGameEnded();
+            }
             return true;
         }
         return false;

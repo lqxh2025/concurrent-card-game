@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Unit tests for the CardDeck class.
@@ -126,5 +127,55 @@ public class CardDeckTest {
         latch.await();
         assertEquals(25, drawCount.get());
         assertEquals(50, deck.size()); // 50 initial - 25 drawn + 25 added
+    }
+
+    /**
+     * Test that a thread blocked in drawCard() on an empty deck is released
+     * once a card becomes available, and receives exactly that card. Uses
+     * bounded polling of Thread.State (not an arbitrary sleep) to confirm the
+     * drawer has actually parked in wait() before the card is added.
+     */
+    @Test
+    public void blockedDrawReturnsAfterCardAdded() throws InterruptedException {
+        CardDeck emptyDeck = new CardDeck(99);
+        Card expectedCard = new Card(42);
+        AtomicReference<Card> drawnCard = new AtomicReference<>();
+
+        Thread drawerThread = new Thread(() -> {
+            try {
+                drawnCard.set(emptyDeck.drawCard());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        });
+        drawerThread.start();
+
+        waitUntilWaiting(drawerThread, 2000);
+        assertEquals(Thread.State.WAITING, drawerThread.getState(),
+            "Drawer thread should be parked in wait() before any card is added");
+
+        emptyDeck.addCard(expectedCard);
+
+        drawerThread.join(2000);
+        assertFalse(drawerThread.isAlive(), "Drawer thread should terminate once a card is added");
+        assertEquals(expectedCard, drawnCard.get(), "Drawer should receive the exact card that was added");
+    }
+
+    /**
+     * Polls the given thread's state in short bounded increments until it
+     * reaches WAITING (or TIMED_WAITING), failing the test if the timeout
+     * elapses first. This avoids a single arbitrary sleep in favor of a
+     * bounded, deterministic wait for the actual condition we care about.
+     */
+    private static void waitUntilWaiting(Thread thread, long timeoutMillis) throws InterruptedException {
+        long deadline = System.currentTimeMillis() + timeoutMillis;
+        while (System.currentTimeMillis() < deadline) {
+            Thread.State state = thread.getState();
+            if (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        fail("Thread did not reach a WAITING state within " + timeoutMillis + "ms");
     }
 }

@@ -12,6 +12,7 @@ import java.util.Queue;
 public class CardDeck {
     private final Queue<Card> cards;
     private final int deckNumber;
+    private boolean gameEnded = false;
 
     /**
      * Creates a new empty card deck with the specified deck number.
@@ -25,19 +26,39 @@ public class CardDeck {
     /**
      * Draws a card from the top of this deck.
      * This method is synchronized to ensure thread safety.
-     * If the deck is empty, the calling thread will wait until a card is available.
-     * @return the card drawn from the deck
+     * If the deck is empty, the calling thread will wait until a card is
+     * available or the game ends (see {@link #signalGameEnded()}).
+     * @return the card drawn from the deck, or {@code null} if the game
+     *         ended while this thread was waiting and no card ever became
+     *         available
      * @throws InterruptedException if the thread is interrupted while waiting
      */
     public synchronized Card drawCard() throws InterruptedException {
-        // Wait while deck is empty
-        while (cards.isEmpty()) {
+        // Wait while deck is empty, unless the game has already ended and
+        // no further cards will ever arrive.
+        while (cards.isEmpty() && !gameEnded) {
             wait();
+        }
+        if (cards.isEmpty()) {
+            // The game ended while this thread was waiting; there is no
+            // card to return.
+            return null;
         }
         Card card = cards.remove();
         // Notify waiting threads that deck state has changed
         notifyAll();
         return card;
+    }
+
+    /**
+     * Signals that the game has ended, waking any thread currently blocked
+     * in {@link #drawCard()} so it can observe that the game is over and
+     * stop waiting for a card that will never arrive. Safe to call even if
+     * no thread is currently waiting, and safe to call more than once.
+     */
+    synchronized void signalGameEnded() {
+        gameEnded = true;
+        notifyAll();
     }
 
     /**
