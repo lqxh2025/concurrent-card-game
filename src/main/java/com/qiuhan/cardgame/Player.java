@@ -163,6 +163,11 @@ public class Player implements Runnable {
 
                 // Check if game ended while waiting
                 if (gameState.isGameWon()) {
+                    // The card was already removed from the deck but the
+                    // game ended before it could be added to this player's
+                    // hand. Return it to the deck it was drawn from so it
+                    // is not lost.
+                    leftDeck.addCard(drawnCard);
                     break;
                 }
 
