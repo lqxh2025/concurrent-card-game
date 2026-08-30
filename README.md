@@ -1,5 +1,7 @@
 # Concurrent Card Game
 
+[![Java CI with Maven](https://github.com/lqxh2025/concurrent-card-game/actions/workflows/maven.yml/badge.svg)](https://github.com/lqxh2025/concurrent-card-game/actions/workflows/maven.yml)
+
 ## Overview
 
 This is a Java multithreaded card-game simulation in which multiple `Player` threads concurrently draw and discard cards through a set of shared decks arranged in a ring. Each player repeatedly draws a card from the deck on its left and discards a card to the deck on its right; the first player to hold four cards of the same denomination wins.
