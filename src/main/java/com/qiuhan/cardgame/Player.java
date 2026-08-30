@@ -171,7 +171,16 @@ public class Player implements Runnable {
                     break;
                 }
 
-                logDraw(drawnCard, leftDeck.getDeckNumber());
+                try {
+                    logDraw(drawnCard, leftDeck.getDeckNumber());
+                } catch (IOException e) {
+                    // Logging the draw failed before the card could be added
+                    // to this player's hand. Restore it to the deck it was
+                    // drawn from so it is not lost, then let the existing
+                    // outer IOException handling terminate this player.
+                    leftDeck.addCard(drawnCard);
+                    throw e;
+                }
 
                 // Add to hand
                 synchronized (this) {

@@ -63,7 +63,7 @@ public class PlayerTest {
         assertFalse(player.hasWinningHand());
 
         // Clear and test winning hand
-        Player player2;
+        Player player2 = null;
         try {
             GameState gameState2 = new GameState();
             player2 = new Player(2, leftDeck, rightDeck, gameState2);
@@ -72,10 +72,13 @@ public class PlayerTest {
             player2.addCard(new Card(5));
             player2.addCard(new Card(5));
             assertTrue(player2.hasWinningHand());
-            player2.closeOutput();
-            new File("player2_output.txt").delete();
         } catch (IOException e) {
             fail("IOException: " + e.getMessage());
+        } finally {
+            if (player2 != null) {
+                player2.closeOutput();
+                new File("player2_output.txt").delete();
+            }
         }
     }
 
@@ -120,13 +123,14 @@ public class PlayerTest {
     }
 
     /**
-     * Characterization/regression test for the known shutdown bug: a player
-     * thread blocked in CardDeck.drawCard() on an empty deck has no way to be
-     * woken when another player wins, because GameState holds no reference to
-     * any CardDeck and cannot broadcast a wakeup. This test is EXPECTED TO
-     * FAIL on the current implementation -- it documents the defect rather
-     * than exercising correct behavior. It always cleans up its own thread so
-     * a failure here cannot hang the rest of the suite.
+     * Regression test for a shutdown defect that has been fixed: a player
+     * thread blocked in CardDeck.drawCard() on an empty deck previously had
+     * no way to be woken when another player won, because GameState held no
+     * reference to any CardDeck and could not broadcast a wakeup. GameState
+     * now signals every registered deck when a winner is declared, waking
+     * any blocked drawer so it can observe that the game has ended and
+     * terminate. This test always cleans up its own thread so a failure
+     * here cannot hang the rest of the suite.
      */
     @Test
     public void blockedPlayerTerminatesWhenGameEnds() throws IOException, InterruptedException {
@@ -153,7 +157,7 @@ public class PlayerTest {
 
             playerThread.join(1000);
             assertFalse(playerThread.isAlive(),
-                "Blocked player thread should terminate once the game has been won (currently fails: known shutdown bug)");
+                "Blocked player thread should terminate once the game has been won");
         } finally {
             if (playerThread.isAlive()) {
                 playerThread.interrupt();
@@ -183,10 +187,11 @@ public class PlayerTest {
     }
 
     /**
-     * Deterministic regression test for the card-loss-on-game-over defect:
-     * a player can successfully remove a card from its left deck, then
-     * observe that another player has won before that card is ever added to
-     * its hand (or returned anywhere), losing it entirely.
+     * Deterministic regression test verifying card conservation when the
+     * game ends immediately after a successful draw, before that card is
+     * added to the player's hand. A fix restores the drawn card to its
+     * source deck in that situation, and this test verifies the card is
+     * never lost.
      *
      * Rather than racing real threads and hoping to hit the window, this
      * test uses a test-only CardDeck subclass (BlockingAfterDrawDeck, below)
@@ -196,9 +201,6 @@ public class PlayerTest {
      * Player.run(). That gives the test a reliable window to declare a
      * winner while the drawn card is "in transit", with no reliance on
      * thread scheduling and no production code changes.
-     *
-     * EXPECTED: this test currently FAILS, because the drawn card ends up
-     * in neither the player's hand nor either deck.
      */
     @Test
     public void drawnCardIsLostWhenGameEndsBeforeItIsAddedToHand() throws IOException, InterruptedException {
